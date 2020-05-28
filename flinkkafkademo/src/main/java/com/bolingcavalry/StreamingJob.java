@@ -33,6 +33,7 @@ import org.apache.flink.streaming.api.windowing.time.Time;
 import org.apache.flink.streaming.api.windowing.windows.TimeWindow;
 import org.apache.flink.streaming.connectors.kafka.FlinkKafkaConsumer011;
 import org.apache.flink.streaming.api.datastream.DataStream;
+import org.apache.flink.api.java.utils.ParameterTool;
 import org.apache.flink.util.Collector;
 
 import com.bolingcavalry.StreamingJob;
@@ -57,9 +58,13 @@ public class StreamingJob {
 	public static void main(String[] args) throws Exception {
 
 		final StreamExecutionEnvironment env = StreamExecutionEnvironment.getExecutionEnvironment();
+		System.out.println("Usage with Kafka: StreamingJob --kafka-topic <topic> [--brokers <brokers>]");
 
-		String kafkaTopic = "demo";
-		String brokers = "10.0.3.14:9092";
+		final ParameterTool params = ParameterTool.fromArgs(args);
+
+		// set up the Kafka reader
+		String kafkaTopic = params.get("demo");
+		String brokers = params.get("brokers", "10.0.3.14:9092");
 
 		System.out.printf("Reading-2 from kafka topic %s @ %s\n", kafkaTopic, brokers);
 		System.out.println();
@@ -113,7 +118,7 @@ public class StreamingJob {
 
 		@Override
 		public String toString() {
-			return word + " : " + count;
+			return word.substring(0,10) + " + " + count;
 		}
 	}
 }
