@@ -19,7 +19,9 @@
 package com.bolingcavalry;
 
 import org.apache.flink.api.common.functions.FlatMapFunction;
+import org.apache.flink.api.common.functions.ReduceFunction;
 import org.apache.flink.api.common.serialization.SimpleStringSchema;
+//import org.apache.flink.api.common.typeinfo.Types;
 import org.apache.flink.api.java.tuple.Tuple;
 import org.apache.flink.api.java.tuple.Tuple2;
 import org.apache.flink.streaming.api.TimeCharacteristic;
@@ -30,6 +32,10 @@ import org.apache.flink.streaming.api.watermark.Watermark;
 import org.apache.flink.streaming.api.windowing.time.Time;
 import org.apache.flink.streaming.api.windowing.windows.TimeWindow;
 import org.apache.flink.streaming.connectors.kafka.FlinkKafkaConsumer011;
+import org.apache.flink.streaming.api.datastream.DataStream;
+import org.apache.flink.util.Collector;
+
+import com.bolingcavalry.StreamingJob;
 
 import javax.annotation.Nullable;
 import java.util.Properties;
@@ -51,61 +57,63 @@ public class StreamingJob {
 	public static void main(String[] args) throws Exception {
 
 		final StreamExecutionEnvironment env = StreamExecutionEnvironment.getExecutionEnvironment();
-		env.enableCheckpointing(5000); // 要设置启动检查点
-		env.setStreamTimeCharacteristic(TimeCharacteristic.EventTime);
+
+		String kafkaTopic = "demo";
+		String brokers = "10.0.3.14:9092";
+
+		System.out.printf("Reading-2 from kafka topic %s @ %s\n", kafkaTopic, brokers);
+		System.out.println();
 
 		Properties props = new Properties();
-		props.setProperty("bootstrap.servers", "kafka1:9092");
-		props.setProperty("group.id", "flink-group");
+		props.setProperty("bootstrap.servers", brokers);
 
 		//数据源配置，是一个kafka消息的消费者
 		FlinkKafkaConsumer011<String> consumer =
-				new FlinkKafkaConsumer011<>("topic001", new SimpleStringSchema(), props);
+				new FlinkKafkaConsumer011<>("demo", new SimpleStringSchema(), props);
 
-		//增加时间水位设置类
-		consumer.assignTimestampsAndWatermarks(new AssignerWithPunctuatedWatermarks<String> (){
-			@Override
-			public long extractTimestamp(String element, long previousElementTimestamp) {
-				return JSONHelper.getTimeLongFromRawMessage(element);
-			}
+		DataStream<String>  messageStream = env.addSource(consumer);
 
-			@Nullable
-			@Override
-			public Watermark checkAndGetNextWatermark(String lastElement, long extractedTimestamp) {
-				if (lastElement != null) {
-					return new Watermark(JSONHelper.getTimeLongFromRawMessage(lastElement));
-				}
-				return null;
-			}
-		});
-
-		env.addSource(consumer)
-				//将原始消息转成Tuple2对象，保留用户名称和访问次数(每个消息访问次数为1)
-				.flatMap((FlatMapFunction<String, Tuple2<String, Long>>) (s, collector) -> {
-					SingleMessage singleMessage = JSONHelper.parse(s);
-
-					if (null != singleMessage) {
-						collector.collect(new Tuple2<>(singleMessage.getName(), 1L));
+		// parse the data, group it, window it, and aggregate the counts
+		DataStream<StreamingJob.WordWithCount> windowCounts = messageStream
+				.flatMap(new FlatMapFunction<String, StreamingJob.WordWithCount>() {
+					@Override
+					public void flatMap(String value, Collector<StreamingJob.WordWithCount> out) {
+						for (String word : value.split("\\s")) {
+							out.collect(new StreamingJob.WordWithCount(value, 1L));
+						}
 					}
 				})
-				//以用户名为key
-				.keyBy(0)
-				//时间窗口为2秒
-				.timeWindow(Time.seconds(2))
-				//将每个用户访问次数累加起来
-				.apply((WindowFunction<Tuple2<String, Long>, Tuple2<String, Long>, Tuple, TimeWindow>) (tuple, window, input, out) -> {
-					long sum = 0L;
-					for (Tuple2<String, Long> record: input) {
-						sum += record.f1;
+				.keyBy("word")
+				.timeWindow(Time.seconds(10))
+				.reduce(new ReduceFunction<StreamingJob.WordWithCount>() {
+					@Override
+					public StreamingJob.WordWithCount reduce(StreamingJob.WordWithCount a, StreamingJob.WordWithCount b) {
+						return new StreamingJob.WordWithCount(a.word, a.count + b.count);
 					}
-
-					Tuple2<String, Long> result = input.iterator().next();
-					result.f1 = sum;
-					out.collect(result);
-				})
-				//输出方式是STDOUT
-				.print();
+				});
+		windowCounts.print();
 
 		env.execute("Flink-Kafka demo");
+	}
+
+	/**
+	 * Data type for words with count.
+	 */
+	public static class WordWithCount {
+
+		public String word;
+		public long count;
+
+		public WordWithCount() {}
+
+		public WordWithCount(String word, long count) {
+			this.word = word;
+			this.count = count;
+		}
+
+		@Override
+		public String toString() {
+			return word + " : " + count;
+		}
 	}
 }
