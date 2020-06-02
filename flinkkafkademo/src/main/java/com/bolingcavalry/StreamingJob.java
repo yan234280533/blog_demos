@@ -63,10 +63,10 @@ public class StreamingJob {
 		final ParameterTool params = ParameterTool.fromArgs(args);
 
 		// set up the Kafka reader
-		String kafkaTopic = params.get("demo");
+		String kafkaTopic = params.get("topic","demo");
 		String brokers = params.get("brokers", "10.0.3.14:9092");
 
-		System.out.printf("Reading-2 from kafka topic %s @ %s\n", kafkaTopic, brokers);
+		System.out.printf("Reading-4 from kafka topic %s @ %s\n", kafkaTopic, brokers);
 		System.out.println();
 
 		Properties props = new Properties();
@@ -74,7 +74,7 @@ public class StreamingJob {
 
 		//数据源配置，是一个kafka消息的消费者
 		FlinkKafkaConsumer011<String> consumer =
-				new FlinkKafkaConsumer011<>("demo", new SimpleStringSchema(), props);
+				new FlinkKafkaConsumer011<>(kafkaTopic, new SimpleStringSchema(), props);
 
 		DataStream<String>  messageStream = env.addSource(consumer);
 

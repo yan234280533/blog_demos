@@ -2,6 +2,7 @@ package com.bolingcavalry.addsink;
 
 import org.apache.flink.streaming.api.environment.StreamExecutionEnvironment;
 import org.apache.flink.streaming.connectors.kafka.FlinkKafkaProducer;
+import org.apache.flink.api.java.utils.ParameterTool;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -20,12 +21,20 @@ public class KafkaStrSink {
         //并行度为1
         env.setParallelism(1);
 
-        Properties properties = new Properties();
-        properties.setProperty("bootstrap.servers", "192.168.50.43:9092");
+        final ParameterTool params = ParameterTool.fromArgs(args);
 
-        String topic = "test006";
-        FlinkKafkaProducer<String> producer = new FlinkKafkaProducer<>(topic,
-                new ProducerStringSerializationSchema(topic),
+        // set up the Kafka reader
+        String kafkaTopic = params.get("topic","write");
+        String brokers = params.get("brokers", "10.0.3.14:9092");
+
+        System.out.printf("Reading-4 from kafka topic %s @ %s\n", kafkaTopic, brokers);
+        System.out.println();
+
+        Properties properties = new Properties();
+        properties.setProperty("bootstrap.servers", brokers);
+
+        FlinkKafkaProducer<String> producer = new FlinkKafkaProducer<>(kafkaTopic,
+                new ProducerStringSerializationSchema(kafkaTopic),
                 properties,
                 FlinkKafkaProducer.Semantic.EXACTLY_ONCE);
 
